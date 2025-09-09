@@ -198,31 +198,40 @@ export default function App(){
   const clearSaved = ()=> clearState();
   const full = assigned.length>=9;
 
-  // ---- PDF export (unchanged)
-  const STARTS = ["08:00 AM","09:45 AM","11:30 AM","01:15 PM","03:00 PM","04:45 PM"];
+  const STARTS = ["09:00 AM","10:45 AM","12:30 PM","14:15 PM","16:00 PM"];
   const DATE_GROUPS = "20.09.2025"; const DATE_KO="21.09.2025";
-  const buildRows = (T)=>[
+  const buildRowsGroupA = (T)=>[
     ["1", `${T[0]||""} vs ${T[1]||""}`, "Field 1", STARTS[0], DATE_GROUPS],
-    ["2", `${T[1]||""} vs ${T[2]||""}`, "Field 2", STARTS[3], DATE_GROUPS],
-    ["3", `${T[0]||""} vs ${T[2]||""}`, "Field 1", STARTS[4], DATE_GROUPS],
+    ["4", `${T[1]||""} vs ${T[2]||""}`, "Field 2", STARTS[1], DATE_GROUPS],
+    ["7", `${T[0]||""} vs ${T[2]||""}`, "Field 1", STARTS[3], DATE_GROUPS],
+  ];
+  const buildRowsGroupB = (T)=>[
+    ["2", `${T[0]||""} vs ${T[1]||""}`, "Field 2", STARTS[0], DATE_GROUPS],
+    ["5", `${T[1]||""} vs ${T[2]||""}`, "Field 1", STARTS[2], DATE_GROUPS],
+    ["8", `${T[0]||""} vs ${T[2]||""}`, "Field 2", STARTS[3], DATE_GROUPS],
+  ];
+  const buildRowsGroupC = (T)=>[
+    ["3", `${T[0]||""} vs ${T[1]||""}`, "Field 1", STARTS[1], DATE_GROUPS],
+    ["6", `${T[1]||""} vs ${T[2]||""}`, "Field 2", STARTS[2], DATE_GROUPS],
+    ["9", `${T[0]||""} vs ${T[2]||""}`, "Field 2", STARTS[4], DATE_GROUPS],
   ];
   const fillTable = (id, rows)=>{
     const tbody = document.querySelector(`#${id} tbody`);
     tbody.innerHTML = rows.map(r=>`<tr>${r.map(c=>`<td>${c||""}</td>`).join("")}</tr>`).join("");
   };
   async function generatePdf(){
-    fillTable("tableA", buildRows(GA));
-    fillTable("tableB", buildRows(GB));
-    fillTable("tableC", buildRows(GC));
+    fillTable("tableA", buildRowsGroupA(GA));
+    fillTable("tableB", buildRowsGroupB(GB));
+    fillTable("tableC", buildRowsGroupC(GC));
     fillTable("tableD", [
-      ["1","2A vs 2B","Field 1","08:00 AM",DATE_GROUPS],
-      ["2","2B vs 2C","Field 2","01:15 PM",DATE_GROUPS],
-      ["3","2A vs 2C","Field 1","03:00 PM",DATE_GROUPS],
+      ["10","2A vs 2B","Field 1","16:15 PM",DATE_GROUPS],
+      ["11","2B vs 2C","Field 1","09:00 AM",DATE_GROUPS],
+      ["12","2A vs 2C","Field 1","10:45 AM",DATE_GROUPS],
     ]);
     fillTable("tableK", [
-      ["1","Semi Final 1: Winner A vs Winner C","Field 1","08:00 AM",DATE_KO],
-      ["2","Semi Final 2: Winner B vs Winner D","Field 2","01:15 PM",DATE_KO],
-      ["3","Final: Winner SF1 vs Winner SF2","Field 1","03:00 PM",DATE_KO],
+      ["13","Semi Final 1: Winner A vs Winner C","Field 1","12:00 PM",DATE_KO],
+      ["14","Semi Final 2: Winner B vs Winner D","Field 1","13:45 PM",DATE_KO],
+      ["15","Final: Winner SF1 vs Winner SF2","Field 1","16:00 PM",DATE_KO],
     ]);
     const fixtureEl = document.getElementById("fixture");
     fixtureEl.style.display = "block";
