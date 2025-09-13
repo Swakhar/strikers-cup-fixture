@@ -4,41 +4,74 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 
 const defaultTeams = Array.from({ length: 9 }, (_, i) => `Team ${i + 1}`);
-const palette = ["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#14b8a6","#0ea5e9","#6366f1","#a855f7"];
+const palette = ["#3b82f6","#06b6d4","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#f97316","#84cc16"];
 
 function useSpinSound() {
   const ctxRef = useRef(null);
   const gainRef = useRef(null);
   const oscRef = useRef(null);
+  
   const start = () => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = ctxRef.current || new AudioCtx();
       ctxRef.current = ctx;
-      const osc = ctx.createOscillator();
+      
+      // Create multiple oscillators for a richer sound
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(300, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 2.3);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.6, ctx.currentTime + 0.15);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start();
-      oscRef.current = osc; gainRef.current = gain;
+      const filter = ctx.createBiquadFilter();
+      
+      // Main tone - spinning wheel sound
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(220, ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 2.5);
+      
+      // Sub tone for richness
+      osc2.type = "triangle";
+      osc2.frequency.setValueAtTime(110, ctx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 2.5);
+      
+      // Filter for professional sound
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(800, ctx.currentTime);
+      filter.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.3);
+      
+      // Volume envelope
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 2.0);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
+      
+      // Connect audio nodes
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc1.start();
+      osc2.start();
+      
+      oscRef.current = [osc1, osc2];
+      gainRef.current = gain;
     } catch {}
   };
+  
   const stop = () => {
     const ctx = ctxRef.current;
     if (!ctx || !gainRef.current || !oscRef.current) return;
     try {
       const now = ctx.currentTime;
       gainRef.current.gain.cancelScheduledValues(now);
-      gainRef.current.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
-      oscRef.current.stop(now + 0.3);
+      gainRef.current.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      oscRef.current.forEach(osc => osc.stop(now + 0.3));
     } catch {}
-    gainRef.current = null; oscRef.current = null;
+    gainRef.current = null;
+    oscRef.current = null;
   };
+  
   return { start, stop };
 }
 
@@ -89,26 +122,41 @@ function useWheel(remaining) {
     const arc = (Math.PI * 2) / Math.max(1, segs);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw outer shadow/border
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius - 2 * dpr, 0, Math.PI * 2);
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 4 * dpr;
+    ctx.stroke();
+
     for (let i = 0; i < segs; i++) {
       const start = i * arc - Math.PI / 2;
       const end = start + arc;
+      
+      // Main segment
       ctx.beginPath();
       ctx.moveTo(center.x, center.y);
-      ctx.arc(center.x, center.y, radius - 6 * dpr, start, end);
+      ctx.arc(center.x, center.y, radius - 8 * dpr, start, end);
       ctx.closePath();
       ctx.fillStyle = palette[i % palette.length];
       ctx.fill();
-      ctx.strokeStyle = "#0b2a55";
-      ctx.lineWidth = 6 * dpr;
+      
+      // Segment border
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 3 * dpr;
       ctx.stroke();
 
+      // Text with better positioning
       ctx.save();
       ctx.translate(center.x, center.y);
       ctx.rotate((start + end) / 2);
       ctx.textAlign = "right";
-      ctx.fillStyle = "#fff";
-      ctx.font = `${16 * dpr}px system-ui, Arial`;
-      ctx.fillText(remaining[i], radius - 20 * dpr, 8 * dpr);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${Math.max(14, 18 * dpr)}px Inter, system-ui, Arial`;
+      ctx.shadowColor = "rgba(0,0,0,0.3)";
+      ctx.shadowBlur = 2 * dpr;
+      ctx.fillText(remaining[i], radius - 25 * dpr, 6 * dpr);
       ctx.restore();
     }
   }, [remaining, redrawTick]);
@@ -161,10 +209,10 @@ const clearState = () => localStorage.removeItem(STORAGE_KEY);
 
 export default function App(){
   const saved = loadState();
-  const [inputs,setInputs]     = useState(saved?.inputs    || defaultTeams);
-  const [teams,setTeams]       = useState(saved?.teams     || defaultTeams);
+  const [inputs,setInputs] = useState(saved?.inputs || defaultTeams);
+  const [teams,setTeams] = useState(saved?.teams || defaultTeams);
   const [remaining,setRemaining] = useState(saved?.remaining || defaultTeams);
-  const [assigned,setAssigned] = useState(saved?.assigned  || []);
+  const [assigned,setAssigned] = useState(saved?.assigned || []);
 
   const { start:startSound, stop:stopSound } = useSpinSound();
   const { shellRef, canvasRef, spin, settleIndex, resetRotation } = useWheel(remaining);
@@ -219,118 +267,273 @@ export default function App(){
     const tbody = document.querySelector(`#${id} tbody`);
     tbody.innerHTML = rows.map(r=>`<tr>${r.map(c=>`<td>${c||""}</td>`).join("")}</tr>`).join("");
   };
+  
   async function generatePdf(){
     fillTable("tableA", buildRowsGroupA(GA));
     fillTable("tableB", buildRowsGroupB(GB));
     fillTable("tableC", buildRowsGroupC(GC));
     fillTable("tableD", [
       ["10","2A vs 2B","Field 1","16:15 PM",DATE_GROUPS],
-      ["11","2B vs 2C","Field 1","09:00 AM",DATE_GROUPS],
-      ["12","2A vs 2C","Field 1","10:45 AM",DATE_GROUPS],
+      ["11","2B vs 2C","Field 1","09:00 AM",DATE_KO],
+      ["12","2A vs 2C","Field 1","10:45 AM",DATE_KO],
     ]);
     fillTable("tableK", [
       ["13","Semi Final 1: Winner A vs Winner C","Field 1","12:00 PM",DATE_KO],
       ["14","Semi Final 2: Winner B vs Winner D","Field 1","13:45 PM",DATE_KO],
       ["15","Final: Winner SF1 vs Winner SF2","Field 1","16:00 PM",DATE_KO],
     ]);
+    
     const fixtureEl = document.getElementById("fixture");
     fixtureEl.style.display = "block";
-    await new Promise(r=>setTimeout(r,0));
-    const canvas = await html2canvas(fixtureEl,{scale:2,backgroundColor:"#fff"});
-    const img = canvas.toDataURL("image/png");
+    await new Promise(r=>setTimeout(r,100));
+    
+    // Capture with higher quality but smaller scale for better PDF fit
+    const canvas = await html2canvas(fixtureEl, {
+      scale: 1.5,
+      backgroundColor: "#fff",
+      useCORS: true,
+      logging: false
+    });
+    
+    const img = canvas.toDataURL("image/png", 0.95);
     const pdf = new jsPDF({unit:"pt", format:"a4"});
-    const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
-    const iw = pw - 40, ih = (canvas.height * iw) / canvas.width;
-    let y = 20;
-    if (ih <= ph - 40) {
-      pdf.addImage(img,"PNG",20,y,iw,ih);
-    } else {
-      // basic pagination
-      pdf.addImage(img,"PNG",20,y,iw,ih);
-      // (Most fixtures fit one page; extend here if yours exceeds one)
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 30;
+    const contentWidth = pageWidth - (margin * 2);
+    const contentHeight = pageHeight - (margin * 2);
+    
+    // Calculate scaled dimensions
+    const imgAspectRatio = canvas.width / canvas.height;
+    let imgWidth = contentWidth;
+    let imgHeight = contentWidth / imgAspectRatio;
+    
+    // If image is too tall for one page, fit to page height
+    if (imgHeight > contentHeight) {
+      imgHeight = contentHeight;
+      imgWidth = contentHeight * imgAspectRatio;
     }
+    
+    // Center the image
+    const x = (pageWidth - imgWidth) / 2;
+    const y = margin;
+    
+    pdf.addImage(img, "PNG", x, y, imgWidth, imgHeight);
     pdf.save("Strikers_Cup_2025_Fixture.pdf");
     fixtureEl.style.display = "none";
   }
 
   return (
-    <>
-      <header><h1>Strikers Cup 2025 — Draw Wheel</h1></header>
-
-      <div className="wrap">
-        {/* LEFT: Groups */}
-        <div className="groups">
-          {["A","B","C"].map((g,gi)=>(
-            <div key={g} className="group" id={`G${g}`}>
-              <h3>Group {g}</h3>
-              {[0,1,2].map((s)=>{
-                const idx = gi + s*3;
-                const name = assigned[idx] || "";
-                return <div key={s} className="slot">{s+1}. <span>{name}</span></div>
-              })}
+    <div className="app">
+      {/* Header */}
+      <header className="header">
+        <div className="header-content">
+          <div className="logo-section">
+            <img src={logoUrl} alt="Strikers Cup Logo" className="header-logo" />
+            <div>
+              <h1 className="title">Strikers Cup 2025</h1>
+              <p className="subtitle">Tournament Draw & Fixture Generator</p>
             </div>
-          ))}
-        </div>
-
-        {/* MIDDLE: Wheel */}
-        <div className="middle">
-          <div className="wheelShell" ref={shellRef}>
-            <div className="pointer" title="Selection Pointer" />
-            <canvas id="wheel" ref={canvasRef}></canvas>
-            <div className="centerLogo"><img src={logoUrl} alt="logo" /></div>
           </div>
-          <div className="btnRow">
-            <button className="btn" onClick={onSpin} disabled={remaining.length===0}>Spin</button>
-            <button className="btn" style={{background:"#6b7b97"}} onClick={reset}>Reset</button>
-            <button className="btn" onClick={generatePdf} disabled={!full}>Download Fixture PDF</button>
-          </div>
-          <div className="small">Order: <b>A1 → B1 → C1 → A2 → B2 → C2 → A3 → B3 → C3</b></div>
-          <div className="btnRow" style={{marginTop:6}}>
-            <button className="btn" style={{background:"#8b1b1b"}} onClick={clearSaved}>Clear Saved State</button>
+          <div className="status-badge">
+            <span className="status-text">{assigned.length}/9 Teams Assigned</span>
+            <div className="progress-bar">
+              <div className="progress-fill" style={{width: `${(assigned.length/9)*100}%`}}></div>
+            </div>
           </div>
         </div>
+      </header>
 
-        {/* RIGHT: Editor */}
-        <div className="editor">
-          <h3>Team Names</h3>
-          <div className="teamGrid">
-            {Array.from({length:9}).map((_,i)=>(
-              <input key={i} value={inputs[i] ?? `Team ${i+1}`} onChange={e=>{
-                const copy=[...inputs]; copy[i]=e.target.value; setInputs(copy);
-              }} />
+      <main className="main-content">
+        {/* Groups Section */}
+        <section className="groups-section">
+          <h2 className="section-title">Group Assignments</h2>
+          <div className="groups-grid">
+            {["A","B","C"].map((g,gi)=>(
+              <div key={g} className="group-card">
+                <div className="group-header">
+                  <h3 className="group-title">Group {g}</h3>
+                  <span className="group-count">{[0,1,2].filter(s => assigned[gi + s*3]).length}/3</span>
+                </div>
+                <div className="group-slots">
+                  {[0,1,2].map((s)=>{
+                    const idx = gi + s*3;
+                    const name = assigned[idx] || "";
+                    return (
+                      <div key={s} className={`team-slot ${name ? 'filled' : 'empty'}`}>
+                        <span className="slot-number">{s+1}</span>
+                        <span className="team-name">{name || "Waiting..."}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
-          <div className="btnRow" style={{marginTop:10}}>
-            <button className="btn" onClick={apply}>Apply Names to Wheel</button>
-            <button className="btn" style={{background:"#1c6b3d"}} onClick={()=>{
-              const arr=[...inputs];
-              for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]] }
-              setInputs(arr);
-            }}>Shuffle Names</button>
+        </section>
+
+        {/* Wheel Section */}
+        <section className="wheel-section">
+          <div className="wheel-container">
+            <div className="wheel-wrapper" ref={shellRef}>
+              <div className="wheel-pointer" />
+              <canvas className="wheel-canvas" ref={canvasRef}></canvas>
+              <div className="wheel-center">
+                <img src={logoUrl} alt="logo" className="center-logo" />
+              </div>
+            </div>
+            
+            <div className="wheel-controls">
+              <button 
+                className="btn btn-primary btn-large" 
+                onClick={onSpin} 
+                disabled={remaining.length===0}
+              >
+                <svg className="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {remaining.length > 0 ? `Spin (${remaining.length} left)` : 'All Teams Assigned'}
+              </button>
+              
+              <div className="control-row">
+                <button className="btn btn-secondary" onClick={reset}>
+                  <svg className="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Reset Draw
+                </button>
+                <button className="btn btn-success" onClick={generatePdf} disabled={!full}>
+                  <svg className="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="draw-info">
+              <p className="draw-order">
+                <strong>Draw Order:</strong> A1 → B1 → C1 → A2 → B2 → C2 → A3 → B3 → C3
+              </p>
+            </div>
           </div>
-          <p className="small">Names & draw state auto-save to your browser. Reload to continue where you left off.</p>
-        </div>
-      </div>
+        </section>
+
+        {/* Team Editor Section */}
+        <section className="editor-section">
+          <div className="editor-card">
+            <h2 className="section-title">Team Configuration</h2>
+            
+            <div className="team-inputs">
+              {Array.from({length:9}).map((_,i)=>(
+                <div key={i} className="input-group">
+                  <label className="input-label">Team {i+1}</label>
+                  <input 
+                    className="team-input" 
+                    value={inputs[i] ?? `Team ${i+1}`} 
+                    onChange={e=>{
+                      const copy=[...inputs]; copy[i]=e.target.value; setInputs(copy);
+                    }}
+                    placeholder={`Team ${i+1}`}
+                  />
+                </div>
+              ))}
+            </div>
+            
+            <div className="editor-controls">
+              <button className="btn btn-primary" onClick={apply}>
+                <svg className="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Apply Changes
+              </button>
+              <button className="btn btn-secondary" onClick={()=>{
+                const arr=[...inputs];
+                for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]] }
+                setInputs(arr);
+              }}>
+                <svg className="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                </svg>
+                Shuffle Names
+              </button>
+            </div>
+
+            <div className="storage-info">
+              <p className="info-text">
+                <svg className="info-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Your progress is automatically saved locally
+              </p>
+              <button className="btn btn-danger btn-small" onClick={clearSaved}>
+                Clear Saved Data
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
 
       {/* Hidden Fixture for PDF */}
       <div className="fixture" id="fixture">
-        <div className="title">Strikers Cup 2025 — Tournament Fixture</div>
+        <div className="fixture-header">
+          <img src={logoUrl} alt="Strikers Cup Logo" className="fixture-logo" />
+          <div>
+            <h1 className="fixture-title">Strikers Cup 2025</h1>
+            <p className="fixture-subtitle">Official Tournament Fixture</p>
+          </div>
+        </div>
 
-        <div className="section">Group A</div>
-        <table id="tableA"><thead><tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr></thead><tbody></tbody></table>
+        <div className="fixture-section">
+          <h2>Group Stage - Group A</h2>
+          <table id="tableA" className="fixture-table">
+            <thead>
+              <tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-        <div className="section">Group B</div>
-        <table id="tableB"><thead><tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr></thead><tbody></tbody></table>
+        <div className="fixture-section">
+          <h2>Group Stage - Group B</h2>
+          <table id="tableB" className="fixture-table">
+            <thead>
+              <tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-        <div className="section">Group C</div>
-        <table id="tableC"><thead><tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr></thead><tbody></tbody></table>
+        <div className="fixture-section">
+          <h2>Group Stage - Group C</h2>
+          <table id="tableC" className="fixture-table">
+            <thead>
+              <tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-        <div className="section">Group D (2nd Place Round Robin)</div>
-        <table id="tableD"><thead><tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr></thead><tbody></tbody></table>
+        <div className="fixture-section">
+          <h2>Group D - 2nd Place Round Robin</h2>
+          <table id="tableD" className="fixture-table">
+            <thead>
+              <tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-        <div className="section">Knockout Stage</div>
-        <table id="tableK"><thead><tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr></thead><tbody></tbody></table>
+        <div className="fixture-section">
+          <h2>Knockout Stage</h2>
+          <table id="tableK" className="fixture-table">
+            <thead>
+              <tr><th>Match</th><th>Fixture</th><th>Ground</th><th>Time</th><th>Date</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
